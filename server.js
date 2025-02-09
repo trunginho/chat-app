@@ -2,7 +2,7 @@
 const WebSocket = require("ws");
 const http = require("http");
 
-// Create an HTTP server (useful for health checks or plain text responses)
+// Create an HTTP server (for health checks or plain text responses)
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("Node.js Chat Server is Running\n");
@@ -17,19 +17,22 @@ const agents = {};
 
 wss.on("connection", (ws, req) => {
   console.log("New connection established. Awaiting initialization message...");
+  ws.isInitialized = false; // Mark this connection as not yet initialized
 
-  // Mark this connection as not yet initialized
-  ws.isInitialized = false;
-
-  // Handle incoming messages
   ws.on("message", (message) => {
-    console.log("Received raw message:", message);
+    // Convert incoming message to a string if it is a Buffer
+    let rawMessage = message;
+    if (Buffer.isBuffer(message)) {
+      rawMessage = message.toString('utf8');
+    }
+    
+    console.log("Received raw message:", rawMessage);
 
-    // If the connection isn't initialized, expect an "init" message
+    // If the connection is not yet initialized, expect an "init" message
     if (!ws.isInitialized) {
       let initData;
       try {
-        initData = JSON.parse(message);
+        initData = JSON.parse(rawMessage);
       } catch (err) {
         console.error("Failed to parse initialization message:", err);
         ws.send(JSON.stringify({ error: "Initialization message must be valid JSON" }));
@@ -38,13 +41,13 @@ wss.on("connection", (ws, req) => {
       }
 
       if (initData.type === "init" && initData.role && initData.id) {
-        // Set connection properties
+        // Set the role and id on the WebSocket connection
         ws.role = initData.role;
         ws.id = initData.id;
         ws.isInitialized = true;
         console.log(`Initialized connection: role=${ws.role}, id=${ws.id}`);
 
-        // Store the connection by role
+        // Store the connection in the appropriate dictionary
         if (ws.role === "customer") {
           customers[ws.id] = ws;
           console.log(`Customer connected: ${ws.id}`);
@@ -64,11 +67,10 @@ wss.on("connection", (ws, req) => {
         return;
       }
     } else {
-      // Process subsequent messages normally
-      console.log(`Received message from ${ws.id}:`, message);
+      // Process subsequent messages (after initialization)
       let data;
       try {
-        data = JSON.parse(message);
+        data = JSON.parse(rawMessage);
       } catch (err) {
         console.error("Invalid message format:", err);
         return;
