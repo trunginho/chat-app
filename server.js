@@ -16,7 +16,7 @@ const wss = new WebSocket.Server({ server });
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: "trungtran4892@gmail.com",       // Your Gmail address
+    user: "trung@epictripasia.com",       // Your Gmail address
     pass: "Silenoz2018."           // Your Gmail app password (if using 2FA, generate an app password)
   }
 });
@@ -24,7 +24,7 @@ const transporter = nodemailer.createTransport({
 // Function to send email notifications
 function sendEmailNotification(customerId, messageContent) {
   const mailOptions = {
-    from: "trungtran4892@gmail.com",          // Sender address (your email)
+    from: "trung@epictripasia.com",          // Sender address (your email)
     to: "trungtran4892@gmail.com",         // Recipient (your agent's email)
     subject: `New message from customer ${customerId}`,
     text: `A new message was received from customer ${customerId}:\n\n${messageContent}`
