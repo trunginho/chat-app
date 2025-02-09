@@ -9,24 +9,19 @@ const server = http.createServer((req, res) => {
   res.end("Node.js Chat Server is Running\n");
 });
 
-// Create the WebSocket server instance
-const wss = new WebSocket.Server({ server });
-
 const transporter = nodemailer.createTransport({
-  host: 'smtp.hostinger.com',    // Replace with your actual SMTP host from Hostinger
-  port: 465,                        // Replace with the correct port (465 for SSL or 587 for TLS)
-  secure: true,                     // Set to true if using port 465, false for port 587
+  service: 'gmail',
   auth: {
-    user: 'trung@epictripasia.com', // Your Hostinger email address
-    pass: 'Trung123.'     // Your email password (or app-specific password if required)
+    user: 'trungtran4892@gmail.com',
+    pass: 'Silenoz2018.' // Use the App Password if you have 2FA enabled
   }
 });
 
 // Function to send email notifications
 function sendEmailNotification(customerId, messageContent) {
   const mailOptions = {
-    from: "trung@epictripasia.com",          // Sender address (your email)
-    to: "trungtran4892@gmail.com",         // Recipient (your agent's email)
+    from: "trungtran4892@gmail.com",          // Sender address (your email)
+    to: "trung@epictripasia.com",         // Recipient (your agent's email)
     subject: `New message from customer ${customerId}`,
     text: `A new message was received from customer ${customerId}:\n\n${messageContent}`
   };
