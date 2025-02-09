@@ -13,7 +13,7 @@ const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
     user: "trungtran4892@gmail.com",
-    pass: "vezq twwk xsrh uasq" // Use environment variables for security
+    pass: "vezq twwk xsrh uasq" // Use environment variables for security in production
   }
 });
 
@@ -66,7 +66,7 @@ function deliverStoredMessages(userId, ws) {
   }
 }
 
-// Start 2-minute timer and send email when customer joins
+// Start 2-minute timer and send email when a customer joins
 function startAgentTimeout(customerId, ws) {
   sendWaitingCustomerEmail(customerId); // Send email immediately
 
@@ -77,15 +77,15 @@ function startAgentTimeout(customerId, ws) {
         content: "Our agents are not online at the moment. Please leave us your email, and we will contact you as soon as possible."
       }));
       console.log(`Auto-response sent to customer ${customerId}`);
-
       sendNoAgentResponseEmail(customerId); // Send email after 2 minutes if no agent responded
     }
-  }, 120000); // 2 minutes
+  }, 120000); // 2 minutes (120,000 ms)
 }
 
 wss.on("connection", (ws, req) => {
   console.log("New connection established. Awaiting initialization message...");
   ws.isInitialized = false;
+  ws.emailProvided = false;
 
   ws.on("message", (message) => {
     let rawMessage = message;
@@ -101,7 +101,6 @@ wss.on("connection", (ws, req) => {
           ws.role = msgData.role;
           ws.id = msgData.id;
           ws.isInitialized = true;
-
           console.log(`Initialized connection: role=${ws.role}, id=${ws.id}`);
 
           if (ws.role === "customer") {
@@ -111,13 +110,24 @@ wss.on("connection", (ws, req) => {
           } else if (ws.role === "agent") {
             agents[ws.id] = ws;
             console.log(`Agent connected: ${ws.id}`);
-
-            // Stop timers for waiting customers
+            
+            // Stop timers for waiting customers and notify them that an agent is online
             Object.keys(pendingResponses).forEach(customerId => {
               clearTimeout(pendingResponses[customerId]);
               delete pendingResponses[customerId];
-              console.log(`Timer stopped for customer ${customerId} as an agent is online.`);
+              if (customers[customerId] && customers[customerId].readyState === WebSocket.OPEN) {
+                customers[customerId].send(JSON.stringify({
+                  from: "system",
+                  content: "Agent online"
+                }));
+                console.log(`Timer stopped for customer ${customerId} as an agent is online.`);
+              }
             });
+          } else {
+            console.error("Unknown role received during initialization:", ws.role);
+            ws.send(JSON.stringify({ error: "Unknown role" }));
+            ws.close();
+            return;
           }
 
           deliverStoredMessages(ws.id, ws);
