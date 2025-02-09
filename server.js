@@ -9,11 +9,15 @@ const server = http.createServer((req, res) => {
   res.end("Node.js Chat Server is Running\n");
 });
 
+// Create the WebSocket server instance
+const wss = new WebSocket.Server({ server });
+
+// Set up NodeMailer transporter using Gmail (replace credentials accordingly)
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  service: "gmail",
   auth: {
-    user: 'trungtran4892@gmail.com',
-    pass: 'Silenoz2018.' // Use the App Password if you have 2FA enabled
+    user: "trungtran4892@gmail.com",       // Your Gmail address
+    pass: "qqlw ksco kwxx ukbp"           // Your Gmail app password (if using 2FA, generate an app password)
   }
 });
 
