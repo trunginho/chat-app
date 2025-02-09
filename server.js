@@ -1,115 +1,164 @@
 // server.js
 const WebSocket = require("ws");
 const http = require("http");
+const nodemailer = require("nodemailer");
 
-// Create an HTTP server (useful for health checks or plain text responses)
+// Configure Nodemailer
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASSWORD
+  }
+});
+
+// Create HTTP server
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("Node.js Chat Server is Running\n");
 });
 
-// Create the WebSocket server instance
+// Create WebSocket server
 const wss = new WebSocket.Server({ server });
 
-// Dictionaries to store connections after initialization
+// Store connections and message history
 const customers = {};
 const agents = {};
 
-wss.on("connection", (ws, req) => {
-  console.log("New connection established. Awaiting initialization message...");
-  
-  // Use a variable to track whether this connection is initialized
+// Email notification function
+async function sendEmailNotification(customerId, message) {
+  try {
+    await transporter.sendMail({
+      from: `"Chat Server" <${process.env.EMAIL_USER}>`,
+      to: process.env.ADMIN_EMAIL,
+      subject: `New message from ${customerId}`,
+      text: `Customer: ${customerId}\nMessage: ${message}`,
+      html: `<p><strong>Customer:</strong> ${customerId}</p>
+             <p><strong>Message:</strong> ${message}</p>`
+    });
+  } catch (error) {
+    console.error("Email error:", error);
+  }
+}
+
+wss.on("connection", (ws) => {
   let initialized = false;
+  let customerData = null;
 
-  ws.on("message", (raw) => {
-    // Convert the incoming message to a string if necessary
-    const rawMessage = Buffer.isBuffer(raw) ? raw.toString("utf8") : raw.toString();
-    console.log("Received raw message:", rawMessage);
-
+  ws.on("message", async (raw) => {
+    const rawMessage = raw.toString();
+    
     try {
       const message = JSON.parse(rawMessage);
 
       if (!initialized) {
-        // The first message must be an initialization message
-        if (message.type === "init" && message.role && message.id) {
-          ws.role = message.role;
-          ws.id = message.id;
+        // Initialization handling
+        if (message.type === "init") {
           initialized = true;
-          console.log(`Initialized connection: role=${ws.role}, id=${ws.id}`);
-
-          // Store the connection based on its role
-          if (ws.role === "customer") {
-            customers[ws.id] = ws;
-            console.log(`Customer connected: ${ws.id}`);
-          } else if (ws.role === "agent") {
-            agents[ws.id] = ws;
-            console.log(`Agent connected: ${ws.id}`);
-          } else {
-            console.error("Unknown role received during initialization:", ws.role);
-            ws.send(JSON.stringify({ error: "Unknown role" }));
-            ws.close();
-            return;
+          
+          if (message.role === "customer") {
+            customerData = {
+              ws,
+              messages: [],
+              notified: false,
+              infoSent: false,
+              id: message.id
+            };
+            customers[message.id] = customerData;
+            
+          } else if (message.role === "agent") {
+            agents[message.id] = ws;
+            // Send queued messages to newly connected agent
+            Object.values(customers).forEach(customer => {
+              if (customer.messages.length > 0) {
+                ws.send(JSON.stringify({
+                  type: "history",
+                  customerId: customer.id,
+                  messages: customer.messages
+                }));
+              }
+            });
           }
-        } else {
-          throw new Error("First message must be a valid initialization message");
         }
-      } else {
-        // Process subsequent messages after initialization
-        if (message.type === "private" && message.target && message.content) {
-          if (ws.role === "customer") {
-            const targetAgentId = message.target;
-            if (agents[targetAgentId] && agents[targetAgentId].readyState === WebSocket.OPEN) {
-              agents[targetAgentId].send(JSON.stringify({
-                from: ws.id,
-                content: message.content
+        return;
+      }
+
+      // Handle customer messages
+      if (message.type === "private") {
+        if (ws.role === "customer") {
+          const targetAgent = "agent1"; // Default agent ID
+
+          // Store message in history
+          customerData.messages.push({
+            content: message.content,
+            timestamp: new Date().toISOString(),
+            direction: "outgoing"
+          });
+
+          // Send email notification
+          await sendEmailNotification(customerData.id, message.content);
+
+          // Check for @ in message
+          if (message.content.includes("@")) {
+            ws.send(JSON.stringify({
+              from: "system",
+              content: "Thank you. We will be in touch in the next 24h."
+            }));
+          }
+
+          // Check agent availability
+          if (agents[targetAgent]?.readyState === WebSocket.OPEN) {
+            agents[targetAgent].send(JSON.stringify({
+              customerId: customerData.id,
+              content: message.content,
+              history: customerData.messages
+            }));
+          } else {
+            // Agent offline handling
+            if (!customerData.notified) {
+              ws.send(JSON.stringify({
+                from: "system",
+                content: "Our agents are currently offline. Please leave your email or phone number and we'll contact you."
               }));
-              console.log(`Message from customer ${ws.id} sent to agent ${targetAgentId}`);
-            } else {
-              console.log(`Agent ${targetAgentId} not connected.`);
-            }
-          } else if (ws.role === "agent") {
-            const targetCustomerId = message.target;
-            if (customers[targetCustomerId] && customers[targetCustomerId].readyState === WebSocket.OPEN) {
-              customers[targetCustomerId].send(JSON.stringify({
-                from: ws.id,
-                content: message.content
-              }));
-              console.log(`Message from agent ${ws.id} sent to customer ${targetCustomerId}`);
-            } else {
-              console.log(`Customer ${targetCustomerId} not connected.`);
+              customerData.notified = true;
             }
           }
-        } else {
-          console.log("Message does not match expected format:", message);
+        }
+
+        // Handle agent messages
+        if (ws.role === "agent" && message.customerId) {
+          const customer = customers[message.customerId];
+          if (customer?.ws.readyState === WebSocket.OPEN) {
+            customer.ws.send(JSON.stringify({
+              from: "agent",
+              content: message.content
+            }));
+            // Add to message history
+            customer.messages.push({
+              content: message.content,
+              timestamp: new Date().toISOString(),
+              direction: "incoming"
+            });
+          }
         }
       }
     } catch (error) {
-      console.error(`Invalid message: ${rawMessage}`);
-      ws.send(JSON.stringify({
-        error: "Invalid message format",
-        details: "All messages must be valid JSON"
-      }));
-      ws.close();
+      console.error("Message handling error:", error);
     }
   });
 
   ws.on("close", () => {
-    if (initialized) {
-      if (ws.role === "customer") {
-        delete customers[ws.id];
-        console.log(`Customer ${ws.id} disconnected`);
-      } else if (ws.role === "agent") {
-        delete agents[ws.id];
-        console.log(`Agent ${ws.id} disconnected`);
-      }
-    } else {
-      console.log("Connection closed before initialization");
+    if (customerData) {
+      // Keep customer data for 1 hour in case of reconnection
+      setTimeout(() => {
+        if (customers[customerData.id]?.ws === ws) {
+          delete customers[customerData.id];
+        }
+      }, 3600000);
     }
   });
 });
 
-// Start the HTTP and WebSocket server on the specified port
-const port = process.env.PORT || 3001;
-server.listen(port, () => {
-  console.log(`Server is listening on port ${port}`);
+server.listen(process.env.PORT || 3001, () => {
+  console.log(`Server listening on port ${process.env.PORT || 3001}`);
 });
