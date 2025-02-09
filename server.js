@@ -13,17 +13,22 @@ const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
     user: "trungtran4892@gmail.com",
-    pass: "vezq twwk xsrh uasq"  // Make sure to use a secure method to store credentials
+    pass: "vezq twwk xsrh uasq" // Use environment variables for security
   }
 });
 
-// Function to send email notification when a customer is waiting
+const customers = {};
+const agents = {};
+const messageHistory = {};
+const pendingResponses = {};
+
+// Function to send an email when a customer is waiting
 function sendWaitingCustomerEmail(customerId) {
   const mailOptions = {
     from: "trungtran4892@gmail.com",
     to: "trung@epictripasia.com",
     subject: `Customer Waiting for an Agent - ${customerId}`,
-    text: `A new customer (${customerId}) has started a chat and is waiting for an agent. Please respond within 3 minutes.`
+    text: `A new customer (${customerId}) has started a chat and is waiting for an agent. Please respond within 2 minutes.`
   };
 
   transporter.sendMail(mailOptions, (error, info) => {
@@ -32,13 +37,13 @@ function sendWaitingCustomerEmail(customerId) {
   });
 }
 
-// Function to send email when no agent responds after 3 minutes
+// Function to send an email if no agent responds after 2 minutes
 function sendNoAgentResponseEmail(customerId) {
   const mailOptions = {
     from: "trungtran4892@gmail.com",
     to: "trung@epictripasia.com",
     subject: `No Agent Responded to Customer - ${customerId}`,
-    text: `Customer ${customerId} has been waiting for 3 minutes, but no agent responded. You may want to follow up with them.`
+    text: `Customer ${customerId} has been waiting for 2 minutes, but no agent responded. You may want to follow up with them.`
   };
 
   transporter.sendMail(mailOptions, (error, info) => {
@@ -47,18 +52,13 @@ function sendNoAgentResponseEmail(customerId) {
   });
 }
 
-const customers = {};
-const agents = {};
-const messageHistory = {};
-const pendingResponses = {};
-
 // Store messages for offline agents/customers
 function storeMessage(targetId, fromId, content) {
   if (!messageHistory[targetId]) messageHistory[targetId] = [];
   messageHistory[targetId].push({ from: fromId, content });
 }
 
-// Deliver stored messages when user reconnects
+// Deliver stored messages when a user reconnects
 function deliverStoredMessages(userId, ws) {
   if (messageHistory[userId] && messageHistory[userId].length > 0) {
     messageHistory[userId].forEach(msg => ws.send(JSON.stringify(msg)));
@@ -66,9 +66,9 @@ function deliverStoredMessages(userId, ws) {
   }
 }
 
-// Start 3-minute timer and send email when customer joins
+// Start 2-minute timer and send email when customer joins
 function startAgentTimeout(customerId, ws) {
-  sendWaitingCustomerEmail(customerId); // Send email immediately when waiting starts
+  sendWaitingCustomerEmail(customerId); // Send email immediately
 
   pendingResponses[customerId] = setTimeout(() => {
     if (customers[customerId]) {
@@ -77,23 +77,22 @@ function startAgentTimeout(customerId, ws) {
         content: "Our agents are not online at the moment. Please leave us your email, and we will contact you as soon as possible."
       }));
       console.log(`Auto-response sent to customer ${customerId}`);
-      
-      sendNoAgentResponseEmail(customerId); // Send email after 3 minutes if no agent responded
+
+      sendNoAgentResponseEmail(customerId); // Send email after 2 minutes if no agent responded
     }
-  }, 180000); // 3 minutes
+  }, 120000); // 2 minutes
 }
 
 wss.on("connection", (ws, req) => {
   console.log("New connection established. Awaiting initialization message...");
   ws.isInitialized = false;
-  ws.emailProvided = false;
 
   ws.on("message", (message) => {
     let rawMessage = message;
     if (Buffer.isBuffer(message)) rawMessage = message.toString("utf8");
 
     console.log("Received raw message:", rawMessage);
-    
+
     try {
       const msgData = JSON.parse(rawMessage);
 
@@ -104,7 +103,7 @@ wss.on("connection", (ws, req) => {
           ws.isInitialized = true;
 
           console.log(`Initialized connection: role=${ws.role}, id=${ws.id}`);
-          
+
           if (ws.role === "customer") {
             customers[ws.id] = ws;
             console.log(`Customer connected: ${ws.id}`);
@@ -112,9 +111,12 @@ wss.on("connection", (ws, req) => {
           } else if (ws.role === "agent") {
             agents[ws.id] = ws;
             console.log(`Agent connected: ${ws.id}`);
+
+            // Stop timers for waiting customers
             Object.keys(pendingResponses).forEach(customerId => {
               clearTimeout(pendingResponses[customerId]);
               delete pendingResponses[customerId];
+              console.log(`Timer stopped for customer ${customerId} as an agent is online.`);
             });
           }
 
