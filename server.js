@@ -2,7 +2,7 @@
 const WebSocket = require("ws");
 const http = require("http");
 
-// Create an HTTP server (useful for health checks or plain text responses)
+// Create an HTTP server (for health checks or plain text responses)
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("Node.js Chat Server is Running\n");
@@ -17,24 +17,26 @@ const agents = {};
 
 wss.on("connection", (ws, req) => {
   console.log("New connection established. Awaiting initialization message...");
-  
-  // Use a variable to track whether this connection is initialized
-  let initialized = false;
+  ws.isInitialized = false; // Mark this connection as not yet initialized
 
-  ws.on("message", (raw) => {
-    // Convert the incoming message to a string if necessary
-    const rawMessage = Buffer.isBuffer(raw) ? raw.toString("utf8") : raw.toString();
+  ws.on("message", (message) => {
+    // Convert incoming message to a string if it is a Buffer
+    let rawMessage = message;
+    if (Buffer.isBuffer(message)) {
+      rawMessage = message.toString('utf8');
+    }
+    
     console.log("Received raw message:", rawMessage);
 
     try {
-      const message = JSON.parse(rawMessage);
+      const msgData = JSON.parse(rawMessage);
 
-      if (!initialized) {
+      if (!ws.isInitialized) {
         // The first message must be an initialization message
-        if (message.type === "init" && message.role && message.id) {
-          ws.role = message.role;
-          ws.id = message.id;
-          initialized = true;
+        if (msgData.type === "init" && msgData.role && msgData.id) {
+          ws.role = msgData.role;
+          ws.id = msgData.id;
+          ws.isInitialized = true;
           console.log(`Initialized connection: role=${ws.role}, id=${ws.id}`);
 
           // Store the connection based on its role
@@ -54,25 +56,32 @@ wss.on("connection", (ws, req) => {
           throw new Error("First message must be a valid initialization message");
         }
       } else {
-        // Process subsequent messages after initialization
-        if (message.type === "private" && message.target && message.content) {
+        // Process subsequent messages (after initialization)
+        if (msgData.type === "private" && msgData.target && msgData.content) {
+          // If the sender is a customer, route the message to the target agent
           if (ws.role === "customer") {
-            const targetAgentId = message.target;
+            const targetAgentId = msgData.target;
             if (agents[targetAgentId] && agents[targetAgentId].readyState === WebSocket.OPEN) {
               agents[targetAgentId].send(JSON.stringify({
                 from: ws.id,
-                content: message.content
+                content: msgData.content
               }));
               console.log(`Message from customer ${ws.id} sent to agent ${targetAgentId}`);
             } else {
               console.log(`Agent ${targetAgentId} not connected.`);
+              // Send an autoresponse back to the customer
+              ws.send(JSON.stringify({
+                from: "system",
+                content: "Our agents are not online at the moment. Please leave us your email and we will contact you as soon as possible."
+              }));
             }
           } else if (ws.role === "agent") {
-            const targetCustomerId = message.target;
+            // If the sender is an agent, route the message to the target customer
+            const targetCustomerId = msgData.target;
             if (customers[targetCustomerId] && customers[targetCustomerId].readyState === WebSocket.OPEN) {
               customers[targetCustomerId].send(JSON.stringify({
                 from: ws.id,
-                content: message.content
+                content: msgData.content
               }));
               console.log(`Message from agent ${ws.id} sent to customer ${targetCustomerId}`);
             } else {
@@ -80,7 +89,7 @@ wss.on("connection", (ws, req) => {
             }
           }
         } else {
-          console.log("Message does not match expected format:", message);
+          console.log("Message does not match expected format:", msgData);
         }
       }
     } catch (error) {
@@ -94,7 +103,7 @@ wss.on("connection", (ws, req) => {
   });
 
   ws.on("close", () => {
-    if (initialized) {
+    if (ws.isInitialized) {
       if (ws.role === "customer") {
         delete customers[ws.id];
         console.log(`Customer ${ws.id} disconnected`);
