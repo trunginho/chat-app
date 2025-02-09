@@ -118,7 +118,7 @@ wss.on("connection", (ws, req) => {
               if (customers[customerId] && customers[customerId].readyState === WebSocket.OPEN) {
                 customers[customerId].send(JSON.stringify({
                   from: "system",
-                  content: ""
+                  content: "Agent online"
                 }));
                 console.log(`Timer stopped for customer ${customerId} as an agent is online.`);
               }
