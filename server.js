@@ -13,12 +13,12 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocket.Server({ server });
 
 const transporter = nodemailer.createTransport({
-  host: 'smtp.epictripasia.com',    // Replace with your actual SMTP host from Hostinger
+  host: 'smtp.hostinger.com',    // Replace with your actual SMTP host from Hostinger
   port: 465,                        // Replace with the correct port (465 for SSL or 587 for TLS)
   secure: true,                     // Set to true if using port 465, false for port 587
   auth: {
     user: 'trung@epictripasia.com', // Your Hostinger email address
-    pass: 'Silenoz2018.'     // Your email password (or app-specific password if required)
+    pass: 'Trung123.'     // Your email password (or app-specific password if required)
   }
 });
 
