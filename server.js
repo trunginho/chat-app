@@ -39,17 +39,35 @@ function sendEmailNotification(customerId, messageContent) {
   });
 }
 
-// Dictionaries to store connections after initialization
+// Dictionaries to store connections and message history
 const customers = {};
 const agents = {};
+const messageHistory = {}; // Stores offline messages { userId: [ { from, content } ] }
+
+// Function to store offline messages
+function storeMessage(targetId, fromId, content) {
+  if (!messageHistory[targetId]) {
+    messageHistory[targetId] = [];
+  }
+  messageHistory[targetId].push({ from: fromId, content });
+}
+
+// Function to deliver stored messages
+function deliverStoredMessages(userId, ws) {
+  if (messageHistory[userId] && messageHistory[userId].length > 0) {
+    messageHistory[userId].forEach(msg => {
+      ws.send(JSON.stringify(msg));
+    });
+    delete messageHistory[userId]; // Clear the messages after sending
+  }
+}
 
 wss.on("connection", (ws, req) => {
   console.log("New connection established. Awaiting initialization message...");
-  ws.isInitialized = false; // Mark this connection as not yet initialized
-  ws.emailProvided = false; // Flag to track if a customer has already provided an email
+  ws.isInitialized = false;
+  ws.emailProvided = false;
 
   ws.on("message", (message) => {
-    // Convert incoming message to a string if it is a Buffer
     let rawMessage = message;
     if (Buffer.isBuffer(message)) {
       rawMessage = message.toString("utf8");
@@ -61,14 +79,12 @@ wss.on("connection", (ws, req) => {
       const msgData = JSON.parse(rawMessage);
 
       if (!ws.isInitialized) {
-        // The first message must be an initialization message
         if (msgData.type === "init" && msgData.role && msgData.id) {
           ws.role = msgData.role;
           ws.id = msgData.id;
           ws.isInitialized = true;
           console.log(`Initialized connection: role=${ws.role}, id=${ws.id}`);
 
-          // Store the connection based on its role
           if (ws.role === "customer") {
             customers[ws.id] = ws;
             console.log(`Customer connected: ${ws.id}`);
@@ -81,16 +97,17 @@ wss.on("connection", (ws, req) => {
             ws.close();
             return;
           }
+
+          // Send stored messages if any
+          deliverStoredMessages(ws.id, ws);
         } else {
           throw new Error("First message must be a valid initialization message");
         }
       } else {
-        // Process subsequent messages (after initialization)
         if (msgData.type === "private" && msgData.target && msgData.content) {
           if (ws.role === "customer") {
             const targetAgentId = msgData.target;
             if (agents[targetAgentId] && agents[targetAgentId].readyState === WebSocket.OPEN) {
-              // Forward the message to the connected agent
               agents[targetAgentId].send(JSON.stringify({
                 from: ws.id,
                 content: msgData.content
@@ -98,7 +115,9 @@ wss.on("connection", (ws, req) => {
               console.log(`Message from customer ${ws.id} sent to agent ${targetAgentId}`);
             } else {
               console.log(`Agent ${targetAgentId} not connected.`);
-              // Check if the customer's message contains an "@" (basic email detection)
+              storeMessage(targetAgentId, ws.id, msgData.content);
+              sendEmailNotification(ws.id, msgData.content);
+
               if (!ws.emailProvided && msgData.content.includes("@")) {
                 ws.emailProvided = true;
                 ws.send(JSON.stringify({
@@ -106,19 +125,13 @@ wss.on("connection", (ws, req) => {
                   content: "Thank you, we will be in touch as soon as possible."
                 }));
                 console.log(`Email received from customer ${ws.id}. Sent thank-you response.`);
-                // Optionally, you can also send an email notification here
-                sendEmailNotification(ws.id, msgData.content);
               } else if (!ws.emailProvided) {
-                // Send default autoresponse requesting an email if not provided
                 ws.send(JSON.stringify({
                   from: "system",
                   content: "Our agents are not online at the moment. Please leave us your email and we will contact you as soon as possible."
                 }));
                 console.log(`Sent auto-response to customer ${ws.id} requesting email.`);
-                // Also send an email notification so you know about the message
-                sendEmailNotification(ws.id, msgData.content);
               }
-              // If ws.emailProvided is already true, no further autoresponses are sent.
             }
           } else if (ws.role === "agent") {
             const targetCustomerId = msgData.target;
@@ -130,6 +143,7 @@ wss.on("connection", (ws, req) => {
               console.log(`Message from agent ${ws.id} sent to customer ${targetCustomerId}`);
             } else {
               console.log(`Customer ${targetCustomerId} not connected.`);
+              storeMessage(targetCustomerId, ws.id, msgData.content);
             }
           }
         } else {
