@@ -50,23 +50,3 @@ wss.on("connection", (ws) => {
   });
 });
 
-  ws.on("close", () => {
-    if (ws.isInitialized) {
-      if (ws.role === "customer") {
-        delete customers[ws.id];
-        console.log(`Customer ${ws.id} disconnected`);
-      } else if (ws.role === "agent") {
-        delete agents[ws.id];
-        console.log(`Agent ${ws.id} disconnected`);
-      }
-    } else {
-      console.log("Connection closed before initialization");
-    }
-  });
-});
-
-// Start the HTTP and WebSocket server on the specified port
-const port = process.env.PORT || 3001;
-server.listen(port, () => {
-  console.log(`Server is listening on port ${port}`);
-});
