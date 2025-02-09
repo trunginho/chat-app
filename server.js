@@ -13,21 +13,37 @@ const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
     user: "trungtran4892@gmail.com",
-    pass: "vezq twwk xsrh uasq"
+    pass: "vezq twwk xsrh uasq"  // Make sure to use a secure method to store credentials
   }
 });
 
-function sendEmailNotification(customerId, messageContent) {
+// Function to send email notification when a customer is waiting
+function sendWaitingCustomerEmail(customerId) {
   const mailOptions = {
     from: "trungtran4892@gmail.com",
     to: "trung@epictripasia.com",
-    subject: `New message from customer ${customerId}`,
-    text: `A new message was received from customer ${customerId}:\n\n${messageContent}`
+    subject: `Customer Waiting for an Agent - ${customerId}`,
+    text: `A new customer (${customerId}) has started a chat and is waiting for an agent. Please respond within 3 minutes.`
   };
 
   transporter.sendMail(mailOptions, (error, info) => {
     if (error) console.error("Error sending email:", error);
-    else console.log("Email sent:", info.response);
+    else console.log("Waiting customer email sent:", info.response);
+  });
+}
+
+// Function to send email when no agent responds after 3 minutes
+function sendNoAgentResponseEmail(customerId) {
+  const mailOptions = {
+    from: "trungtran4892@gmail.com",
+    to: "trung@epictripasia.com",
+    subject: `No Agent Responded to Customer - ${customerId}`,
+    text: `Customer ${customerId} has been waiting for 3 minutes, but no agent responded. You may want to follow up with them.`
+  };
+
+  transporter.sendMail(mailOptions, (error, info) => {
+    if (error) console.error("Error sending email:", error);
+    else console.log("No agent response email sent:", info.response);
   });
 }
 
@@ -36,11 +52,13 @@ const agents = {};
 const messageHistory = {};
 const pendingResponses = {};
 
+// Store messages for offline agents/customers
 function storeMessage(targetId, fromId, content) {
   if (!messageHistory[targetId]) messageHistory[targetId] = [];
   messageHistory[targetId].push({ from: fromId, content });
 }
 
+// Deliver stored messages when user reconnects
 function deliverStoredMessages(userId, ws) {
   if (messageHistory[userId] && messageHistory[userId].length > 0) {
     messageHistory[userId].forEach(msg => ws.send(JSON.stringify(msg)));
@@ -48,7 +66,10 @@ function deliverStoredMessages(userId, ws) {
   }
 }
 
+// Start 3-minute timer and send email when customer joins
 function startAgentTimeout(customerId, ws) {
+  sendWaitingCustomerEmail(customerId); // Send email immediately when waiting starts
+
   pendingResponses[customerId] = setTimeout(() => {
     if (customers[customerId]) {
       customers[customerId].send(JSON.stringify({
@@ -56,8 +77,10 @@ function startAgentTimeout(customerId, ws) {
         content: "Our agents are not online at the moment. Please leave us your email, and we will contact you as soon as possible."
       }));
       console.log(`Auto-response sent to customer ${customerId}`);
+      
+      sendNoAgentResponseEmail(customerId); // Send email after 3 minutes if no agent responded
     }
-  }, 60000);
+  }, 180000); // 3 minutes
 }
 
 wss.on("connection", (ws, req) => {
@@ -112,7 +135,6 @@ wss.on("connection", (ws, req) => {
             } else {
               console.log(`Agent ${targetAgentId} not connected.`);
               storeMessage(targetAgentId, ws.id, msgData.content);
-              sendEmailNotification(ws.id, msgData.content);
             }
           } else if (ws.role === "agent") {
             const targetCustomerId = msgData.target;
