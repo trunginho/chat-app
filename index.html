@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Live Chat</title>
+  <!-- Google Font for a nicer look -->
+  <link href="https://fonts.googleapis.com/css?family=Roboto" rel="stylesheet">
+  <style>
+    /* Reset some default browser styles */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Roboto', sans-serif;
+      background: #f2f2f2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .chat-container {
+      max-width: 600px;
+      width: 100%;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    .chat-header {
+      background: #007bff;
+      color: #fff;
+      padding: 15px;
+      text-align: center;
+      font-size: 18px;
+    }
+    .chat-messages {
+      padding: 15px;
+      height: 400px;
+      overflow-y: auto;
+      border-bottom: 1px solid #ddd;
+    }
+    .chat-input {
+      display: flex;
+      padding: 15px;
+      background: #fafafa;
+    }
+    .chat-input input {
+      flex: 1;
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .chat-input button {
+      margin-left: 10px;
+      padding: 10px 20px;
+      background: #007bff;
+      border: none;
+      color: #fff;
+      font-size: 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+    .chat-input button:hover {
+      background: #0056b3;
+    }
+    .message {
+      margin-bottom: 10px;
+      padding: 8px 12px;
+      border-radius: 20px;
+      max-width: 80%;
+      word-wrap: break-word;
+    }
+    /* Style for messages sent by the user */
+    .message.self {
+      background: #d1e7dd;
+      margin-left: auto;
+      text-align: right;
+    }
+    /* Style for messages from others */
+    .message.other {
+      background: #f8d7da;
+      margin-right: auto;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <div class="chat-header">
+      Live Chat
+    </div>
+    <div id="chat-messages" class="chat-messages">
+      <!-- Messages will appear here -->
+    </div>
+    <div class="chat-input">
+      <input id="message" type="text" placeholder="Type a message..." />
+      <button id="send">Send</button>
+    </div>
+  </div>
+
+  <script>
+    // In production, if you serve via HTTPS, change this to "wss://yourdomain.com/path"
+    const ws = new WebSocket("ws://localhost:8080");
+    const chatMessages = document.getElementById('chat-messages');
+    const messageInput = document.getElementById('message');
+    const sendButton = document.getElementById('send');
+
+    // Function to append a message in the chat window
+    // 'sender' can be 'self' (sent by the user) or 'other' (received from others)
+    function appendMessage(text, sender = 'other') {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `message ${sender}`;
+      messageDiv.textContent = text;
+      chatMessages.appendChild(messageDiv);
+      // Auto-scroll to the bottom
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    ws.onopen = () => {
+      console.log("Connected to chat server");
+    };
+
+    ws.onmessage = (event) => {
+      let text;
+      if (typeof event.data === "string") {
+        text = event.data;
+      } else {
+        // Convert Blob to text if needed
+        const reader = new FileReader();
+        reader.onload = function() {
+          appendMessage(reader.result, 'other');
+        };
+        reader.readAsText(event.data);
+        return;
+      }
+      appendMessage(text, 'other');
+    };
+
+    // Updated send button event listener
+    // This snippet appends the message locally so the sender sees it immediately,
+    // then sends it to the server.
+    sendButton.addEventListener('click', () => {
+      const message = messageInput.value;
+      if (message) {
+        // Append the message to the chat box immediately in the sender's window
+        appendMessage(message, 'self');
+        // Send the message to the server
+        ws.send(message);
+        messageInput.value = '';  // Clear the input field
+      }
+    });
+
+    // Also send message on Enter key press
+    messageInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        sendButton.click();
+      }
+    });
+  </script>
+</body>
+</html>
