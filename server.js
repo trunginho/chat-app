@@ -18,6 +18,7 @@ const agents = {};
 wss.on("connection", (ws, req) => {
   console.log("New connection established. Awaiting initialization message...");
   ws.isInitialized = false; // Mark this connection as not yet initialized
+  ws.emailProvided = false; // Flag to track if customer already provided an email
 
   ws.on("message", (message) => {
     // Convert incoming message to a string if it is a Buffer
@@ -58,10 +59,10 @@ wss.on("connection", (ws, req) => {
       } else {
         // Process subsequent messages (after initialization)
         if (msgData.type === "private" && msgData.target && msgData.content) {
-          // If the sender is a customer, route the message to the target agent
           if (ws.role === "customer") {
             const targetAgentId = msgData.target;
             if (agents[targetAgentId] && agents[targetAgentId].readyState === WebSocket.OPEN) {
+              // Forward the message to the connected agent
               agents[targetAgentId].send(JSON.stringify({
                 from: ws.id,
                 content: msgData.content
@@ -69,14 +70,25 @@ wss.on("connection", (ws, req) => {
               console.log(`Message from customer ${ws.id} sent to agent ${targetAgentId}`);
             } else {
               console.log(`Agent ${targetAgentId} not connected.`);
-              // Send an autoresponse back to the customer
-              ws.send(JSON.stringify({
-                from: "system",
-                content: "Our agents are not online at the moment. Please leave us your email and we will contact you as soon as possible."
-              }));
+              // Check if the customer's message contains an "@" (a basic check for an email)
+              if (!ws.emailProvided && msgData.content.includes("@")) {
+                ws.emailProvided = true;
+                ws.send(JSON.stringify({
+                  from: "system",
+                  content: "Thank you, we will be in touch as soon as possible."
+                }));
+                console.log(`Email received from customer ${ws.id}. Sent thank you response.`);
+              } else if (!ws.emailProvided) {
+                // Send default autoresponse requesting an email if not provided
+                ws.send(JSON.stringify({
+                  from: "system",
+                  content: "Our agents are not online at the moment. Please leave us your email and we will contact you as soon as possible."
+                }));
+                console.log(`Sent auto-response to customer ${ws.id} requesting email.`);
+              }
+              // If emailProvided is already true, do not send any further autoresponses.
             }
           } else if (ws.role === "agent") {
-            // If the sender is an agent, route the message to the target customer
             const targetCustomerId = msgData.target;
             if (customers[targetCustomerId] && customers[targetCustomerId].readyState === WebSocket.OPEN) {
               customers[targetCustomerId].send(JSON.stringify({
