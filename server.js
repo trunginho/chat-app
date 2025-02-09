@@ -79,7 +79,7 @@ function startAgentTimeout(customerId, ws) {
       console.log(`Auto-response sent to customer ${customerId}`);
       sendNoAgentResponseEmail(customerId); // Send email after 2 minutes if no agent responded
     }
-  }, 120000); // 2 minutes (120,000 ms)
+  }, 120000); // 2 minutes
 }
 
 wss.on("connection", (ws, req) => {
@@ -107,11 +107,21 @@ wss.on("connection", (ws, req) => {
             customers[ws.id] = ws;
             console.log(`Customer connected: ${ws.id}`);
             startAgentTimeout(ws.id, ws);
+            // **Broadcast new customer event to all connected agents**
+            Object.keys(agents).forEach(agentId => {
+              if (agents[agentId] && agents[agentId].readyState === WebSocket.OPEN) {
+                agents[agentId].send(JSON.stringify({
+                  type: "new_customer",
+                  customerId: ws.id,
+                  content: `Customer ${ws.id} connected`
+                }));
+                console.log(`Broadcasted new customer ${ws.id} to agent ${agentId}`);
+              }
+            });
           } else if (ws.role === "agent") {
             agents[ws.id] = ws;
             console.log(`Agent connected: ${ws.id}`);
-            
-            // Stop timers for waiting customers and notify them that an agent is online
+            // Stop timers for waiting customers
             Object.keys(pendingResponses).forEach(customerId => {
               clearTimeout(pendingResponses[customerId]);
               delete pendingResponses[customerId];
