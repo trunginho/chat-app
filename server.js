@@ -1,5 +1,3 @@
-
-
 // server.js
 const WebSocket = require("ws");
 const http = require("http");
@@ -50,3 +48,8 @@ wss.on("connection", (ws) => {
   });
 });
 
+// Start the HTTP and WebSocket server on the specified port
+const port = process.env.PORT || 3001;
+server.listen(port, () => {
+  console.log(`Server is listening on port ${port}`);
+});
