@@ -17,7 +17,7 @@ const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
     user: "trungtran4892@gmail.com",       // Your Gmail address
-    pass: "qqlw ksco kwxx ukbp"           // Your Gmail app password (if using 2FA, generate an app password)
+    pass: "vezq twwk xsrh uasq"           // Your Gmail app password (if using 2FA, generate an app password)
   }
 });
 
@@ -26,8 +26,8 @@ function sendEmailNotification(customerId, messageContent) {
   const mailOptions = {
     from: "trungtran4892@gmail.com",          // Sender address (your email)
     to: "trung@epictripasia.com",         // Recipient (your agent's email)
-    subject: New message from customer ${customerId},
-    text: A new message was received from customer ${customerId}:\n\n${messageContent}
+    subject: `New message from customer ${customerId}`,
+    text: `A new message was received from customer ${customerId}:\n\n${messageContent}`
   };
 
   transporter.sendMail(mailOptions, (error, info) => {
@@ -66,15 +66,15 @@ wss.on("connection", (ws, req) => {
           ws.role = msgData.role;
           ws.id = msgData.id;
           ws.isInitialized = true;
-          console.log(Initialized connection: role=${ws.role}, id=${ws.id});
+          console.log(`Initialized connection: role=${ws.role}, id=${ws.id}`);
 
           // Store the connection based on its role
           if (ws.role === "customer") {
             customers[ws.id] = ws;
-            console.log(Customer connected: ${ws.id});
+            console.log(`Customer connected: ${ws.id}`);
           } else if (ws.role === "agent") {
             agents[ws.id] = ws;
-            console.log(Agent connected: ${ws.id});
+            console.log(`Agent connected: ${ws.id}`);
           } else {
             console.error("Unknown role received during initialization:", ws.role);
             ws.send(JSON.stringify({ error: "Unknown role" }));
@@ -95,9 +95,9 @@ wss.on("connection", (ws, req) => {
                 from: ws.id,
                 content: msgData.content
               }));
-              console.log(Message from customer ${ws.id} sent to agent ${targetAgentId});
+              console.log(`Message from customer ${ws.id} sent to agent ${targetAgentId}`);
             } else {
-              console.log(Agent ${targetAgentId} not connected.);
+              console.log(`Agent ${targetAgentId} not connected.`);
               // Check if the customer's message contains an "@" (basic email detection)
               if (!ws.emailProvided && msgData.content.includes("@")) {
                 ws.emailProvided = true;
@@ -105,7 +105,7 @@ wss.on("connection", (ws, req) => {
                   from: "system",
                   content: "Thank you, we will be in touch as soon as possible."
                 }));
-                console.log(Email received from customer ${ws.id}. Sent thank-you response.);
+                console.log(`Email received from customer ${ws.id}. Sent thank-you response.`);
                 // Optionally, you can also send an email notification here
                 sendEmailNotification(ws.id, msgData.content);
               } else if (!ws.emailProvided) {
@@ -114,7 +114,7 @@ wss.on("connection", (ws, req) => {
                   from: "system",
                   content: "Our agents are not online at the moment. Please leave us your email and we will contact you as soon as possible."
                 }));
-                console.log(Sent auto-response to customer ${ws.id} requesting email.);
+                console.log(`Sent auto-response to customer ${ws.id} requesting email.`);
                 // Also send an email notification so you know about the message
                 sendEmailNotification(ws.id, msgData.content);
               }
@@ -127,9 +127,9 @@ wss.on("connection", (ws, req) => {
                 from: ws.id,
                 content: msgData.content
               }));
-              console.log(Message from agent ${ws.id} sent to customer ${targetCustomerId});
+              console.log(`Message from agent ${ws.id} sent to customer ${targetCustomerId}`);
             } else {
-              console.log(Customer ${targetCustomerId} not connected.);
+              console.log(`Customer ${targetCustomerId} not connected.`);
             }
           }
         } else {
@@ -137,7 +137,7 @@ wss.on("connection", (ws, req) => {
         }
       }
     } catch (error) {
-      console.error(Invalid message: ${rawMessage});
+      console.error(`Invalid message: ${rawMessage}`);
       ws.send(JSON.stringify({
         error: "Invalid message format",
         details: "All messages must be valid JSON"
@@ -150,10 +150,10 @@ wss.on("connection", (ws, req) => {
     if (ws.isInitialized) {
       if (ws.role === "customer") {
         delete customers[ws.id];
-        console.log(Customer ${ws.id} disconnected);
+        console.log(`Customer ${ws.id} disconnected`);
       } else if (ws.role === "agent") {
         delete agents[ws.id];
-        console.log(Agent ${ws.id} disconnected);
+        console.log(`Agent ${ws.id} disconnected`);
       }
     } else {
       console.log("Connection closed before initialization");
@@ -164,5 +164,5 @@ wss.on("connection", (ws, req) => {
 // Start the HTTP and WebSocket server on the specified port
 const port = process.env.PORT || 3001;
 server.listen(port, () => {
-  console.log(Server is listening on port ${port});
+  console.log(`Server is listening on port ${port}`);
 });
