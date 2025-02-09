@@ -1,6 +1,7 @@
 // server.js
 const WebSocket = require("ws");
 const http = require("http");
+const nodemailer = require("nodemailer");
 
 // Create an HTTP server (for health checks or plain text responses)
 const server = http.createServer((req, res) => {
@@ -11,6 +12,33 @@ const server = http.createServer((req, res) => {
 // Create the WebSocket server instance
 const wss = new WebSocket.Server({ server });
 
+// Set up NodeMailer transporter using Gmail (replace credentials accordingly)
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: "trungtran4892@gmail.com",       // Your Gmail address
+    pass: "Silenoz2018."           // Your Gmail app password (if using 2FA, generate an app password)
+  }
+});
+
+// Function to send email notifications
+function sendEmailNotification(customerId, messageContent) {
+  const mailOptions = {
+    from: "trungtran4892@gmail.com",          // Sender address (your email)
+    to: "trungtran4892@gmail.com",         // Recipient (your agent's email)
+    subject: `New message from customer ${customerId}`,
+    text: `A new message was received from customer ${customerId}:\n\n${messageContent}`
+  };
+
+  transporter.sendMail(mailOptions, (error, info) => {
+    if (error) {
+      console.error("Error sending email:", error);
+    } else {
+      console.log("Email sent: " + info.response);
+    }
+  });
+}
+
 // Dictionaries to store connections after initialization
 const customers = {};
 const agents = {};
@@ -18,13 +46,13 @@ const agents = {};
 wss.on("connection", (ws, req) => {
   console.log("New connection established. Awaiting initialization message...");
   ws.isInitialized = false; // Mark this connection as not yet initialized
-  ws.emailProvided = false; // Flag to track if customer already provided an email
+  ws.emailProvided = false; // Flag to track if a customer has already provided an email
 
   ws.on("message", (message) => {
     // Convert incoming message to a string if it is a Buffer
     let rawMessage = message;
     if (Buffer.isBuffer(message)) {
-      rawMessage = message.toString('utf8');
+      rawMessage = message.toString("utf8");
     }
     
     console.log("Received raw message:", rawMessage);
@@ -70,14 +98,16 @@ wss.on("connection", (ws, req) => {
               console.log(`Message from customer ${ws.id} sent to agent ${targetAgentId}`);
             } else {
               console.log(`Agent ${targetAgentId} not connected.`);
-              // Check if the customer's message contains an "@" (a basic check for an email)
+              // Check if the customer's message contains an "@" (basic email detection)
               if (!ws.emailProvided && msgData.content.includes("@")) {
                 ws.emailProvided = true;
                 ws.send(JSON.stringify({
                   from: "system",
                   content: "Thank you, we will be in touch as soon as possible."
                 }));
-                console.log(`Email received from customer ${ws.id}. Sent thank you response.`);
+                console.log(`Email received from customer ${ws.id}. Sent thank-you response.`);
+                // Optionally, you can also send an email notification here
+                sendEmailNotification(ws.id, msgData.content);
               } else if (!ws.emailProvided) {
                 // Send default autoresponse requesting an email if not provided
                 ws.send(JSON.stringify({
@@ -85,8 +115,10 @@ wss.on("connection", (ws, req) => {
                   content: "Our agents are not online at the moment. Please leave us your email and we will contact you as soon as possible."
                 }));
                 console.log(`Sent auto-response to customer ${ws.id} requesting email.`);
+                // Also send an email notification so you know about the message
+                sendEmailNotification(ws.id, msgData.content);
               }
-              // If emailProvided is already true, do not send any further autoresponses.
+              // If ws.emailProvided is already true, no further autoresponses are sent.
             }
           } else if (ws.role === "agent") {
             const targetCustomerId = msgData.target;
