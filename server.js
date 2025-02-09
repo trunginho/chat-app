@@ -12,12 +12,13 @@ const server = http.createServer((req, res) => {
 // Create the WebSocket server instance
 const wss = new WebSocket.Server({ server });
 
-// Set up NodeMailer transporter using Gmail (replace credentials accordingly)
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: 'smtp.epictripasia.com',    // Replace with your actual SMTP host from Hostinger
+  port: 465,                        // Replace with the correct port (465 for SSL or 587 for TLS)
+  secure: true,                     // Set to true if using port 465, false for port 587
   auth: {
-    user: "trung@epictripasia.com",       // Your Gmail address
-    pass: "Silenoz2018."           // Your Gmail app password (if using 2FA, generate an app password)
+    user: 'trung@epictripasia.com', // Your Hostinger email address
+    pass: 'Silenoz2018.'     // Your email password (or app-specific password if required)
   }
 });
 
