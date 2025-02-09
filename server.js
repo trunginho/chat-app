@@ -79,7 +79,7 @@ function startAgentTimeout(customerId, ws) {
       console.log(`Auto-response sent to customer ${customerId}`);
       sendNoAgentResponseEmail(customerId); // Send email after 2 minutes if no agent responded
     }
-  }, 120000); // 2 minutes
+  }, 120000); // 2 minutes (120,000 ms)
 }
 
 wss.on("connection", (ws, req) => {
@@ -107,7 +107,7 @@ wss.on("connection", (ws, req) => {
             customers[ws.id] = ws;
             console.log(`Customer connected: ${ws.id}`);
             startAgentTimeout(ws.id, ws);
-            // **Broadcast new customer event to all connected agents**
+            // Broadcast new customer event to all connected agents
             Object.keys(agents).forEach(agentId => {
               if (agents[agentId] && agents[agentId].readyState === WebSocket.OPEN) {
                 agents[agentId].send(JSON.stringify({
@@ -121,7 +121,20 @@ wss.on("connection", (ws, req) => {
           } else if (ws.role === "agent") {
             agents[ws.id] = ws;
             console.log(`Agent connected: ${ws.id}`);
-            // Stop timers for waiting customers
+            
+            // When an agent connects, send new_customer events for all waiting customers
+            Object.keys(customers).forEach(customerId => {
+              if (customers[customerId] && customers[customerId].readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                  type: "new_customer",
+                  customerId: customerId,
+                  content: `Customer ${customerId} connected`
+                }));
+                console.log(`Sent new_customer event for customer ${customerId} to agent ${ws.id}`);
+              }
+            });
+            
+            // Stop timers for waiting customers and notify them that an agent is online
             Object.keys(pendingResponses).forEach(customerId => {
               clearTimeout(pendingResponses[customerId]);
               delete pendingResponses[customerId];
