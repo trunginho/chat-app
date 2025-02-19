@@ -96,6 +96,12 @@ wss.on("connection", (ws, req) => {
     try {
       const msgData = JSON.parse(rawMessage);
 
+      // Handle ping messages for Render server keep-alive
+      if (msgData.type === "ping") {
+        ws.send(JSON.stringify({ type: "pong" }));
+        return;
+      }
+
       if (!ws.isInitialized) {
         if (msgData.type === "init" && msgData.role && msgData.id) {
           ws.role = msgData.role;
