@@ -2,21 +2,18 @@ const WebSocket = require("ws");
 const http = require("http");
 const nodemailer = require("nodemailer");
 
-// Create a basic HTTP server.
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("Node.js Chat Server is Running\n");
 });
 
-// Create a WebSocket server attached to the HTTP server.
 const wss = new WebSocket.Server({ server });
 
-// Set up the nodemailer transporter.
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
     user: "trungtran4892@gmail.com",
-    pass: "vezq twwk xsrh uasq" // In production, use environment variables for security.
+    pass: "vezq twwk xsrh uasq" // Use environment variables for security in production
   }
 });
 
@@ -25,7 +22,7 @@ const agents = {};
 const messageHistory = {};
 const pendingResponses = {};
 
-// Function to send an email when a customer is waiting.
+// Function to send an email when a customer is waiting
 function sendWaitingCustomerEmail(customerId) {
   const mailOptions = {
     from: "trungtran4892@gmail.com",
@@ -40,7 +37,7 @@ function sendWaitingCustomerEmail(customerId) {
   });
 }
 
-// Function to send an email if no agent responds after 2 minutes.
+// Function to send an email if no agent responds after 2 minutes
 function sendNoAgentResponseEmail(customerId) {
   const mailOptions = {
     from: "trungtran4892@gmail.com",
@@ -55,13 +52,13 @@ function sendNoAgentResponseEmail(customerId) {
   });
 }
 
-// Store messages for offline agents/customers.
+// Store messages for offline agents/customers
 function storeMessage(targetId, fromId, content) {
   if (!messageHistory[targetId]) messageHistory[targetId] = [];
   messageHistory[targetId].push({ from: fromId, content });
 }
 
-// Deliver stored messages when a user reconnects.
+// Deliver stored messages when a user reconnects
 function deliverStoredMessages(userId, ws) {
   if (messageHistory[userId] && messageHistory[userId].length > 0) {
     messageHistory[userId].forEach(msg => ws.send(JSON.stringify(msg)));
@@ -69,9 +66,9 @@ function deliverStoredMessages(userId, ws) {
   }
 }
 
-// Start a 2-minute timer and send email when a customer joins.
+// Start 2-minute timer and send email when a customer joins
 function startAgentTimeout(customerId, ws) {
-  sendWaitingCustomerEmail(customerId); // Send email immediately.
+  sendWaitingCustomerEmail(customerId); // Send email immediately
 
   pendingResponses[customerId] = setTimeout(() => {
     if (customers[customerId]) {
@@ -80,12 +77,11 @@ function startAgentTimeout(customerId, ws) {
         content: "Our agents are not online at the moment. Please leave us your email, and we will contact you as soon as possible."
       }));
       console.log(`Auto-response sent to customer ${customerId}`);
-      sendNoAgentResponseEmail(customerId); // Send email after 2 minutes if no agent responded.
+      sendNoAgentResponseEmail(customerId); // Send email after 2 minutes if no agent responded
     }
   }, 120000); // 2 minutes (120,000 ms)
 }
 
-// Handle new WebSocket connections.
 wss.on("connection", (ws, req) => {
   console.log("New connection established. Awaiting initialization message...");
   ws.isInitialized = false;
@@ -100,7 +96,7 @@ wss.on("connection", (ws, req) => {
     try {
       const msgData = JSON.parse(rawMessage);
 
-      // Respond to ping messages to support keep-alive.
+      // Handle ping messages for Render server keep-alive
       if (msgData.type === "ping") {
         ws.send(JSON.stringify({ type: "pong" }));
         return;
@@ -116,8 +112,9 @@ wss.on("connection", (ws, req) => {
           if (ws.role === "customer") {
             customers[ws.id] = ws;
             console.log(`Customer connected: ${ws.id}`);
-            // If an agent is already connected, notify the customer immediately.
+            // Check if an agent is already connected:
             if (Object.keys(agents).length > 0) {
+              // If an agent is online, immediately notify customer.
               ws.send(JSON.stringify({
                 from: "system",
                 content: "Agent online"
@@ -127,7 +124,7 @@ wss.on("connection", (ws, req) => {
               // Otherwise, start the 2-minute timer.
               startAgentTimeout(ws.id, ws);
             }
-            // Broadcast new customer event to all connected agents.
+            // Broadcast new customer event to all connected agents
             Object.keys(agents).forEach(agentId => {
               if (agents[agentId] && agents[agentId].readyState === WebSocket.OPEN) {
                 agents[agentId].send(JSON.stringify({
@@ -141,7 +138,7 @@ wss.on("connection", (ws, req) => {
           } else if (ws.role === "agent") {
             agents[ws.id] = ws;
             console.log(`Agent connected: ${ws.id}`);
-            // When an agent connects, send new_customer events for all waiting customers.
+            // When an agent connects, send new_customer events for all waiting customers
             Object.keys(customers).forEach(customerId => {
               if (customers[customerId] && customers[customerId].readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
@@ -152,7 +149,7 @@ wss.on("connection", (ws, req) => {
                 console.log(`Sent new_customer event for customer ${customerId} to agent ${ws.id}`);
               }
             });
-            // Stop timers for waiting customers and notify them that an agent is online.
+            // Stop timers for waiting customers and notify them that an agent is online
             Object.keys(pendingResponses).forEach(customerId => {
               clearTimeout(pendingResponses[customerId]);
               delete pendingResponses[customerId];
@@ -164,9 +161,6 @@ wss.on("connection", (ws, req) => {
                 console.log(`Timer stopped for customer ${customerId} as an agent is online.`);
               }
             });
-          } else if (ws.role === "keep-alive") {
-            console.log("Keep-alive connection established.");
-            // No further action is needed for keep-alive connections.
           } else {
             console.error("Unknown role received during initialization:", ws.role);
             ws.send(JSON.stringify({ error: "Unknown role" }));
@@ -174,10 +168,7 @@ wss.on("connection", (ws, req) => {
             return;
           }
 
-          // Only deliver stored messages for real users.
-          if (ws.role !== "keep-alive") {
-            deliverStoredMessages(ws.id, ws);
-          }
+          deliverStoredMessages(ws.id, ws);
         } else {
           throw new Error("First message must be a valid initialization message");
         }
@@ -227,8 +218,6 @@ wss.on("connection", (ws, req) => {
       } else if (ws.role === "agent") {
         delete agents[ws.id];
         console.log(`Agent ${ws.id} disconnected`);
-      } else if (ws.role === "keep-alive") {
-        console.log("Keep-alive connection closed.");
       }
     } else {
       console.log("Connection closed before initialization");
@@ -239,38 +228,4 @@ wss.on("connection", (ws, req) => {
 const port = process.env.PORT || 3001;
 server.listen(port, () => {
   console.log(`Server is listening on port ${port}`);
-
-  // --- Self Keep-Alive Connection ---
-  // This code creates a client (using the same "ws" module) that connects to the server’s own
-  // WebSocket endpoint. It initializes with a special role ("keep-alive") and then sends
-  // periodic ping messages every 5 minutes. If the connection drops, it will try to reconnect.
-  const WebSocketClient = require("ws");
-  function keepAliveConnection() {
-    // Adjust the URL as needed. For production on Render you might use your public URL.
-    const keepAliveUrl = `ws://epictrip-chat.onrender.com/:${port}/`;
-    const wsClient = new WebSocketClient(keepAliveUrl);
-
-    wsClient.on('open', () => {
-      console.log("Keep-alive connection established from server.");
-      wsClient.send(JSON.stringify({ type: "init", role: "keep-alive", id: `keep-alive-${Date.now()}` }));
-      setInterval(() => {
-        if (wsClient.readyState === WebSocketClient.OPEN) {
-          wsClient.send(JSON.stringify({ type: "ping" }));
-          console.log("Keep-alive ping sent from server client.");
-        }
-      }, 300000); // 5 minutes (300,000 ms)
-    });
-
-    wsClient.on('error', (error) => {
-      console.error("Keep-alive connection error:", error);
-    });
-
-    wsClient.on('close', () => {
-      console.log("Keep-alive connection closed. Reconnecting in 5 seconds...");
-      setTimeout(keepAliveConnection, 5000);
-    });
-  }
-
-  // Start the self keep-alive connection.
-  keepAliveConnection();
 });
